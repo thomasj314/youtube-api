@@ -1,0 +1,111 @@
+{
+  "Comment": "YouTube Bronze ingestion -> Silver parquet transformation",
+  "StartAt": "RunIngestion",
+  "States": {
+    "RunIngestion": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "ResultPath": "$.IngestionResult",
+      "Parameters": {
+        "FunctionName": "${INGESTION_LAMBDA_ARN}",
+        "Payload.$": "$"
+      },
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "States.TaskFailed"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.ErrorDetails",
+          "Next": "NotifyFailure"
+        }
+      ],
+      "Next": "CheckIngestionStatus"
+    },
+    "RunJsonToParquet": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "ResultPath": "$.TransformationResult",
+      "Parameters": {
+        "FunctionName": "${JSON_TO_PARQUET_LAMBDA_ARN}",
+        "Payload.$": "$"
+      },
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "States.TaskFailed"
+          ],
+          "IntervalSeconds": 10,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.ErrorDetails",
+          "Next": "NotifyFailure"
+        }
+      ],
+      "Next": "CheckPipelineStatus"
+    },
+    "CheckPipelineStatus": {
+      "Type": "Choice",
+      "Comment": "Lambda 내부의 논리적 에러(has_error=True) 확인 (선택 사항)",
+      "Choices": [
+        {
+          "Variable": "$.TransformationResult.Payload.has_error",
+          "BooleanEquals": true,
+          "Next": "NotifyFailure"
+        }
+      ],
+      "Default": "Success"
+    },
+    "NotifyFailure": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "${SNS_ALERT_TOPIC_ARN}",
+        "Subject": "[YT Pipeline] Step Functions Execution Failed",
+        "Message.$": "States.JsonToString($)"
+      },
+      "Next": "Failed"
+    },
+    "Failed": {
+      "Type": "Fail",
+      "Error": "YouTubePipelineFailed",
+      "Cause": "Ingestion or transformation stage failed"
+    },
+    "Success": {
+      "Type": "Succeed"
+    },
+    "CheckIngestionStatus": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.IngestionResult.Payload.has_error",
+          "BooleanEquals": true,
+          "Next": "NotifyFailure"
+        }
+      ],
+      "Default": "RunJsonToParquet"
+    }
+  }
+}
