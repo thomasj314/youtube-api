@@ -25,14 +25,12 @@
       ],
       "Catch": [
         {
-          "ErrorEquals": [
-            "States.ALL"
-          ],
+          "ErrorEquals": ["States.ALL"],
           "ResultPath": "$.ErrorDetails",
           "Next": "NotifyFailure"
         }
       ],
-      "Next": "CheckIngestionStatus"
+      "Next": "RunJsonToParquet"
     },
     "RunJsonToParquet": {
       "Type": "Task",
@@ -57,9 +55,7 @@
       ],
       "Catch": [
         {
-          "ErrorEquals": [
-            "States.ALL"
-          ],
+          "ErrorEquals": ["States.ALL"],
           "ResultPath": "$.ErrorDetails",
           "Next": "NotifyFailure"
         }
@@ -72,6 +68,11 @@
       "Choices": [
         {
           "Variable": "$.TransformationResult.Payload.has_error",
+          "BooleanEquals": true,
+          "Next": "NotifyFailure"
+        },
+        {
+          "Variable": "$.IngestionResult.Payload.has_error",
           "BooleanEquals": true,
           "Next": "NotifyFailure"
         }
@@ -95,17 +96,6 @@
     },
     "Success": {
       "Type": "Succeed"
-    },
-    "CheckIngestionStatus": {
-      "Type": "Choice",
-      "Choices": [
-        {
-          "Variable": "$.IngestionResult.Payload.has_error",
-          "BooleanEquals": true,
-          "Next": "NotifyFailure"
-        }
-      ],
-      "Default": "RunJsonToParquet"
     }
   }
 }
