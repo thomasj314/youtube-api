@@ -604,7 +604,7 @@ def lambda_handler(event, context):
     # Channels with >=2 videos trending in the same region are kept; one-hit
     # wonders are filtered out to keep channel-ingestion quota predictable.
     dynamic_channels = extract_hot_channels(
-        trending_responses, min_videos_per_region=2
+        trending_responses, min_videos_per_region=1
     )
 
     # Union with statically configured channels (env var)
