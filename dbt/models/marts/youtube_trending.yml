@@ -1,0 +1,83 @@
+version: 2
+
+models:
+  - name: youtube_trending
+    description: |
+      yt_pipeline_gold_dec의 트렌드 마트.
+      silver_trending을 기준으로 중복 제거 후 categories/channel/search 신호를 결합한 증분 모델.
+    config:
+      schema: yt_pipeline_gold_dec
+    columns:
+      - name: trend_record_id
+        description: "collection_date + region_code + video_id 기반의 멱등 유니크 키"
+        tests:
+          - not_null
+          - unique
+      - name: base_ym
+        description: "기준년월(YYYYMM)"
+        tests:
+          - not_null
+      - name: collection_date
+        description: "트렌딩 스냅샷 날짜"
+        tests:
+          - not_null
+      - name: region_code
+        description: "국가/리전 코드"
+        tests:
+          - not_null
+      - name: video_id
+        description: "YouTube 영상 ID"
+        tests:
+          - not_null
+      - name: channel_id
+        description: "채널 ID"
+      - name: category_id
+        description: "영상 카테고리 ID"
+      - name: category_title
+        description: "카테고리 명칭"
+      - name: view_count
+        description: "조회수"
+      - name: like_count
+        description: "좋아요 수"
+      - name: comment_count
+        description: "댓글 수"
+      - name: like_rate
+        description: "좋아요율(좋아요/조회수)"
+      - name: comment_rate
+        description: "댓글율(댓글/조회수)"
+
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - collection_date
+            - region_code
+            - video_id
+
+metrics:
+  - name: kpi_trending_video_count
+    label: Trending Video Count
+    model: ref('youtube_trending')
+    description: "일/리전 기준 트렌딩 영상 수"
+    type: simple
+    type_params:
+      measure:
+        name: trend_record_id
+        agg: count_distinct
+  - name: kpi_total_views
+    label: Total Views
+    model: ref('youtube_trending')
+    description: "트렌딩 집합 총 조회수"
+    type: simple
+    type_params:
+      measure:
+        name: view_count
+        agg: sum
+  - name: kpi_avg_like_rate
+    label: Average Like Rate
+    model: ref('youtube_trending')
+    description: "평균 좋아요율"
+    type: simple
+    type_params:
+      measure:
+        name: like_rate
+        agg: average

@@ -100,3 +100,20 @@ dbt test
 
 > 참고: 실제 실행을 위해서는 `profiles.yml`에 Athena 연결 정보가 필요합니다.
 
+
+## Trend Mart 표준 및 Text2SQL 안전장치
+
+- Gold 마트 `youtube_trending`은 `dbt/models/marts/youtube_trending.sql`에서 incremental + insert_overwrite 전략으로 유지합니다.
+- 중복 방지는 `trend_record_id` 유니크 키와 `(collection_date, region_code, video_id)` 조합 유니크 테스트로 검증합니다.
+- KPI 후보는 다음 3가지를 기본 표준으로 둡니다.
+  - `kpi_trending_video_count`
+  - `kpi_total_views`
+  - `kpi_avg_like_rate`
+- Semantic Layer 연계 전 기준선은 `dbt test` 100% 통과입니다.
+- Text2SQL 운영 시 필수 가드:
+  - 화이트리스트 스키마/테이블(`yt_pipeline_gold_dec.youtube_trending` 등)만 허용
+  - DDL/DML 금지 (`CREATE`, `DROP`, `ALTER`, `INSERT`, `UPDATE`, `DELETE` 차단)
+  - `LIMIT` 강제
+  - Athena workgroup의 쿼리 타임아웃/스캔 바이트 제한 활성화
+
+- 참고: 현재 Athena + dbt 구성에서는 Delta Lake를 dbt materialization 대상으로 직접 쓰기 어렵습니다. Gold 마트는 Iceberg(권장) 또는 Hive 테이블로 운영하세요.
