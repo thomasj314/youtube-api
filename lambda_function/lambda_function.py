@@ -80,6 +80,7 @@ SEARCH_ORDER = os.environ.get("SEARCH_ORDER", "date")
 SEARCH_MAX_PAGES = int(os.environ.get("SEARCH_MAX_PAGES", "1"))
 CHANNEL_MAX_PAGES = int(os.environ.get("CHANNEL_MAX_PAGES", "1"))
 SNS_TOPIC = os.environ.get("SNS_ALERT_TOPIC_ARN", "")
+TOP_N_CHANNELS = int(os.environ.get("TOP_N_CHANNELS", "50"))
 
 API_BASE = "https://www.googleapis.com/youtube/v3"
 YOUTUBE_API_MAX_RESULTS = 50  # Hard limit for videos/playlistItems/search/videoCategories
@@ -568,6 +569,49 @@ def extract_hot_channels(
 
     return sorted(hot_channels)
 
+def extract_top_channels_by_views(
+    trending_responses: dict[str, dict],
+    top_n: int = 50,
+) -> list[str]:
+    """
+    From the in-memory trending responses, extract the channel IDs of the
+    top-N most-viewed trending videos across all regions.
+
+    This gives a deterministic, quota-predictable channel list:
+    - Always at most N channels regardless of trending diversity
+    - Naturally captures the most influential channels (highest viewCount)
+    - Same channel appearing in multiple regions counted once
+
+    Args:
+        trending_responses: Mapping of region code → raw trending API response.
+        top_n: Number of top videos to use for channel extraction. Default 50.
+
+    Returns:
+        Sorted, de-duplicated list of channel IDs (≤ top_n channels).
+    """
+    all_videos: list[dict] = []
+    for region, response in trending_responses.items():
+        if not response:
+            continue
+        all_videos.extend(response.get("items", []))
+
+    # Sort by viewCount descending (defensively handle missing/non-numeric values)
+    def _view_count(video: dict) -> int:
+        try:
+            return int(video.get("statistics", {}).get("viewCount", 0))
+        except (ValueError, TypeError):
+            return 0
+
+    sorted_videos = sorted(all_videos, key=_view_count, reverse=True)
+
+    # Deduplicate channel IDs from top-N videos
+    top_channels: set[str] = set()
+    for video in sorted_videos[:top_n]:
+        channel_id = video.get("snippet", {}).get("channelId")
+        if channel_id:
+            top_channels.add(channel_id)
+
+    return sorted(top_channels)
 
 # ═════════════════════════════════════════════════════════════════════════════
 # Lambda handler
@@ -600,11 +644,11 @@ def lambda_handler(event, context):
         if trending_resp is not None:
             trending_responses[region] = trending_resp
 
-    # ── Discover "hot" channels from this run's trending data ────────────────
-    # Channels with >=2 videos trending in the same region are kept; one-hit
-    # wonders are filtered out to keep channel-ingestion quota predictable.
-    dynamic_channels = extract_hot_channels(
-        trending_responses, min_videos_per_region=1
+    # ── Discover top channels from this run's trending data ─────────────────
+    # Top-N most-viewed trending videos → their unique channels
+    # Deterministic and quota-predictable: at most TOP_N channels regardless of trending diversity.
+    dynamic_channels = extract_top_channels_by_views(
+        trending_responses, top_n=TOP_N_CHANNELS
     )
 
     # Union with statically configured channels (env var)
