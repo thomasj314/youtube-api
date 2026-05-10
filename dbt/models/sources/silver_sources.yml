@@ -1,0 +1,16 @@
+version: 2
+
+sources:
+  - name: yt_pipeline_silver_dev
+    database: awsdatacatalog
+    schema: yt_pipeline_silver_dev
+    description: "YouTube Silver 계층 소스 데이터베이스"
+    tables:
+      - name: silver_categories
+        description: "카테고리 마스터 데이터"
+      - name: silver_channel_videos
+        description: "채널별 수집 영상 데이터"
+      - name: silver_search
+        description: "검색 수집 결과 데이터"
+      - name: silver_trending
+        description: "트렌딩 스냅샷 데이터"
